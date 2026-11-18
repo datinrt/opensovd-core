@@ -39,7 +39,7 @@ criterion = { version = "0.8", default-features = false }
 futures = { version = "0.3", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 indexmap = { version = "2", default-features = false, features = ["std"] }
-jsonschema = { version = "0.60", default-features = false }
+jsonschema = { version = "0.61", default-features = false }
 jsonwebtoken = { version = "11", default-features = false, features = ["use_pem"] }
 http = { version = "1", default-features = false, features = ["std"] }
 http-body = { version = "1", default-features = false }
@@ -54,7 +54,7 @@ rstest = { version = "0.28", default-features = false }
 rustix = { version = "1", default-features = false }
 percent-encoding = { version = "2", default-features = false }
 pin-project = { version = "1", default-features = false }
-regorus = { version = "0.14", default-features = false, features = ["arc", "glob"] }
+regorus = { version = "0.15", default-features = false, features = ["arc", "glob"] }
 schemars = { version = "1", default-features = false }
 sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 sd-notify = { version = "0.5", default-features = false }
@@ -80,8 +80,8 @@ tokio-rustls = { version = "0.26", default-features = false }
 uuid = { version = "1" }
 
 [patch.crates-io]
-# Pin ring to the revision with QNX support.
-ring = { git = "https://github.com/briansmith/ring", rev = "d018db62e1a4a92689611c86d33d6a85939197c" }
+# Pin ring to main for QNX support.
+ring = { git = "https://github.com/briansmith/ring", rev = "b287c58f1dc2764e98c7c48583c2726ded52e6c7" }
 # Use the fork with QNX IPv6 multicast support.
 socket-pktinfo = { git = "https://github.com/datinrt/socket-pktinfo", branch = "qnx" }
 if-addrs = { git = "https://github.com/datinrt/if-addrs", branch = "master" }
