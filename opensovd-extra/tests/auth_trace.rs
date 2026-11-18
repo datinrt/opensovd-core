@@ -9,9 +9,9 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use p256::pkcs8::EncodePrivateKey;
 use opensovd_extra::JwtAuthenticator;
 use opensovd_extra::trace::server_layer;
 use opensovd_server::{Auth, Authenticated, Server};
@@ -71,11 +71,8 @@ async fn auth_records_subject_and_reason_on_the_request_span() {
     let subscriber = tracing_subscriber::registry().with(recorded.clone());
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let pkcs8 = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_FIXED_SIGNING)
-        .unwrap()
-        .to_pkcs8v1()
-        .unwrap();
-    let key = EncodingKey::from_ec_der(pkcs8.as_ref());
+    let secret = p256::SecretKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
+    let key = EncodingKey::from_ec_der(secret.to_pkcs8_der().unwrap().as_bytes());
     let mut jwk = Jwk::from_encoding_key(&key, Algorithm::ES256).unwrap();
     jwk.common.key_id = Some("ec".to_owned());
     let jwt = JwtAuthenticator::new(&JwkSet { keys: vec![jwk] }, ISSUER, &[]).unwrap();

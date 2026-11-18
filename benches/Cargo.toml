@@ -10,7 +10,7 @@ publish = false
 autobins = false
 
 [dependencies]
-aws-lc-rs = { workspace = true }
+p256 = { version = "0.13", features = ["pkcs8"] }
 opensovd-core = { workspace = true }
 opensovd-extra = { workspace = true, features = ["auth"] }
 opensovd-models = { workspace = true }

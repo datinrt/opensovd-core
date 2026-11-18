@@ -40,7 +40,7 @@ futures = { version = "0.3", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 indexmap = { version = "2", default-features = false, features = ["std"] }
 jsonschema = { version = "0.60", default-features = false }
-jsonwebtoken = { version = "11", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+jsonwebtoken = { version = "11", default-features = false, features = ["use_pem"] }
 http = { version = "1", default-features = false, features = ["std"] }
 http-body = { version = "1", default-features = false }
 http-body-util = { version = "0.1", default-features = false }
@@ -71,13 +71,20 @@ tower-http = { version = "0.7", default-features = false }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", default-features = false }
 mock-http-connector = { version = "0.5", default-features = false }
-aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys"] }
+ring = { version = "0.17", default-features = false, features = ["std"] }
 rmcp = { version = "3.0.0" }
-rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["tls12"] }
 rustls-pki-types = { version = "1", default-features = false, features = ["std"] }
-rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 tokio-rustls = { version = "0.26", default-features = false }
 uuid = { version = "1" }
+
+[patch.crates-io]
+# Pin ring to the revision with QNX support.
+ring = { git = "https://github.com/briansmith/ring", rev = "d018db62e1a4a92689611c86d33d6a85939197c" }
+# Use the fork with QNX IPv6 multicast support.
+socket-pktinfo = { git = "https://github.com/datinrt/socket-pktinfo", branch = "qnx" }
+if-addrs = { git = "https://github.com/datinrt/if-addrs", branch = "master" }
 
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }

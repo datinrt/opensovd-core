@@ -11,9 +11,9 @@
 //!
 //! A sample `curl` command with a signed token is printed at startup.
 
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use p256::pkcs8::EncodePrivateKey;
 use opensovd_extra::{JwtAuthenticator, RegorusAuthorizer};
 use opensovd_mocks::create_mock_topology;
 use opensovd_server::{Auth, Server};
@@ -56,8 +56,8 @@ async fn main() -> Result<(), Error> {
 }
 
 fn signing_key() -> Result<EncodingKey, Error> {
-    let pkcs8 = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_FIXED_SIGNING)?.to_pkcs8v1()?;
-    Ok(EncodingKey::from_ec_der(pkcs8.as_ref()))
+    let secret = p256::SecretKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
+    Ok(EncodingKey::from_ec_der(&secret.to_pkcs8_der()?.as_bytes()))
 }
 
 /// The JSON Web Key Set with the public half of `key`.

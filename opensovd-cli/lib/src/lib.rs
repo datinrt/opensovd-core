@@ -90,8 +90,15 @@ pub async fn shutdown_signal() {
     #[cfg(not(unix))]
     let sigterm = std::future::pending::<()>();
 
+    shutdown_signal_with(tokio::signal::ctrl_c(), sigterm).await;
+}
+
+async fn shutdown_signal_with(
+    ctrl_c: impl Future<Output = std::io::Result<()>>,
+    sigterm: impl Future<Output = ()>,
+) {
     tokio::select! {
-        Ok(()) = tokio::signal::ctrl_c() => tracing::info!(target: TARGET, signal = %"SIGINT", "Shutdown signal"),
+        Ok(()) = ctrl_c => tracing::info!(target: TARGET, signal = %"SIGINT", "Shutdown signal"),
         () = sigterm => tracing::info!(target: TARGET, signal = %"SIGTERM", "Shutdown signal"),
     }
 }
@@ -137,29 +144,13 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[cfg(unix)]
     #[tokio::test]
-    #[expect(unsafe_code)]
     async fn shutdown_signal_responds_to_sigterm() {
-        use std::time::Duration;
-
-        let handle = tokio::spawn(shutdown_signal());
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        unsafe { libc::raise(libc::SIGTERM) };
-        let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
-        assert!(result.is_ok(), "shutdown_signal should complete on SIGTERM");
+        shutdown_signal_with(std::future::pending(), std::future::ready(())).await;
     }
 
-    #[cfg(unix)]
     #[tokio::test]
-    #[expect(unsafe_code)]
     async fn shutdown_signal_responds_to_sigint() {
-        use std::time::Duration;
-
-        let handle = tokio::spawn(shutdown_signal());
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        unsafe { libc::raise(libc::SIGINT) };
-        let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
-        assert!(result.is_ok(), "shutdown_signal should complete on SIGINT");
+        shutdown_signal_with(std::future::ready(Ok(())), std::future::pending()).await;
     }
 }

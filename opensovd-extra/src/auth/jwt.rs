@@ -8,15 +8,11 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
-use aws_lc_rs::encoding::AsDer;
-use aws_lc_rs::error::Unspecified;
-use aws_lc_rs::rsa::{PublicKey, RsaParameters};
-use aws_lc_rs::signature::{
-    ECDSA_P256_SHA256_FIXED, ECDSA_P384_SHA384_FIXED, ED25519, ParsedPublicKey,
-    RSA_PKCS1_2048_8192_SHA256, RsaPublicKeyComponents, VerificationAlgorithm,
-};
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use jsonwebtoken::jwk::{
-    AlgorithmParameters, CommonParameters, EllipticCurve, JwkSet, KeyOperations, PublicKeyUse,
+    AlgorithmParameters, CommonParameters, EllipticCurve, EllipticCurveKeyParameters, JwkSet,
+    KeyOperations, PublicKeyUse,
 };
 use jsonwebtoken::{
     Algorithm, AlgorithmFamily, DecodingKey, DecodingKeyKind, Validation, decode, decode_header,
@@ -79,30 +75,28 @@ impl JwtAuthenticator {
                 skip("not a signing key");
                 continue;
             }
-            let (supported, verifier): (&[Algorithm], &'static dyn VerificationAlgorithm) =
-                match &jwk.algorithm {
-                    AlgorithmParameters::RSA(_) => (
-                        AlgorithmFamily::Rsa.algorithms(),
-                        &RSA_PKCS1_2048_8192_SHA256,
-                    ),
-                    AlgorithmParameters::EllipticCurve(key) => match key.curve {
-                        EllipticCurve::P256 => (&[Algorithm::ES256], &ECDSA_P256_SHA256_FIXED),
-                        EllipticCurve::P384 => (&[Algorithm::ES384], &ECDSA_P384_SHA384_FIXED),
-                        _ => {
-                            skip("unsupported curve");
-                            continue;
-                        }
-                    },
-                    AlgorithmParameters::OctetKeyPair(key)
-                        if key.curve == EllipticCurve::Ed25519 =>
-                    {
-                        (&[Algorithm::EdDSA], &ED25519)
-                    }
-                    _ => {
-                        skip("unsupported or malformed key");
+            let supported: &[Algorithm] = match &jwk.algorithm {
+                AlgorithmParameters::RSA(_) => AlgorithmFamily::Rsa.algorithms(),
+                AlgorithmParameters::EllipticCurve(key) => match key.curve {
+                    EllipticCurve::P256 if valid_ec_point(key) => &[Algorithm::ES256],
+                    EllipticCurve::P384 if valid_ec_point(key) => &[Algorithm::ES384],
+                    EllipticCurve::P256 | EllipticCurve::P384 => {
+                        skip("invalid elliptic curve point");
                         continue;
                     }
-                };
+                    _ => {
+                        skip("unsupported curve");
+                        continue;
+                    }
+                },
+                AlgorithmParameters::OctetKeyPair(key) if key.curve == EllipticCurve::Ed25519 => {
+                    &[Algorithm::EdDSA]
+                }
+                _ => {
+                    skip("unsupported or malformed key");
+                    continue;
+                }
+            };
             let Some(kid) = kid else {
                 skip("no kid");
                 continue;
@@ -123,14 +117,17 @@ impl JwtAuthenticator {
                 skip("invalid key material");
                 continue;
             };
-            match parse_key(&key, verifier) {
-                Ok(true) => {}
-                Ok(false) => {
-                    skip("unsupported key size");
-                    continue;
-                }
-                Err(_) => {
+            if let DecodingKeyKind::RsaModulusExponent { n, .. } = key.kind() {
+                let Some((first_index, first)) = n.iter().enumerate().find(|(_, byte)| **byte != 0)
+                else {
                     skip("invalid key material");
+                    continue;
+                };
+                let bits = (n.len() - first_index - 1)
+                    .saturating_mul(8)
+                    .saturating_add(8 - first.leading_zeros() as usize);
+                if !(2048..=8192).contains(&bits) {
+                    skip("unsupported key size");
                     continue;
                 }
             }
@@ -153,24 +150,22 @@ impl JwtAuthenticator {
     }
 }
 
-/// Parses `key` as aws-lc does when it verifies a token, which `from_jwk` leaves
-/// to the first token, and returns whether aws-lc supports its size.
-fn parse_key(
-    key: &DecodingKey,
-    verifier: &'static dyn VerificationAlgorithm,
-) -> Result<bool, Unspecified> {
-    match key.kind() {
-        DecodingKeyKind::SecretOrDer(bytes) => {
-            ParsedPublicKey::new(verifier, bytes)?;
-            Ok(true)
-        }
-        DecodingKeyKind::RsaModulusExponent { n, e } => {
-            let der = RsaPublicKeyComponents { n, e }.as_der()?;
-            let key = PublicKey::from_der(der.as_ref())?;
-            let bits = RsaParameters::public_modulus_len(key.as_ref())?;
-            let rsa = &RSA_PKCS1_2048_8192_SHA256;
-            Ok((rsa.min_modulus_len()..=rsa.max_modulus_len()).contains(&bits))
-        }
+/// Checks that a JWK's public coordinates encode a point on its declared curve.
+fn valid_ec_point(key: &EllipticCurveKeyParameters) -> bool {
+    let (Ok(x), Ok(y)) = (
+        URL_SAFE_NO_PAD.decode(&key.x),
+        URL_SAFE_NO_PAD.decode(&key.y),
+    ) else {
+        return false;
+    };
+    let mut point = Vec::with_capacity(1 + x.len() + y.len());
+    point.push(0x04);
+    point.extend(x);
+    point.extend(y);
+    match key.curve {
+        EllipticCurve::P256 => p256::PublicKey::from_sec1_bytes(&point).is_ok(),
+        EllipticCurve::P384 => p384::PublicKey::from_sec1_bytes(&point).is_ok(),
+        _ => false,
     }
 }
 
@@ -257,13 +252,10 @@ impl Authenticator for JwtAuthenticator {
 mod tests {
     use std::sync::LazyLock;
 
-    use aws_lc_rs::rsa::KeySize;
-    use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, RsaKeyPair};
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use http::Request;
     use jsonwebtoken::jwk::{Jwk, KeyAlgorithm};
     use jsonwebtoken::{EncodingKey, Header, encode};
+    use p256::pkcs8::EncodePrivateKey;
 
     use super::*;
 
@@ -290,31 +282,23 @@ mod tests {
     }
 
     static RSA: LazyLock<Key> = LazyLock::new(|| {
-        let pkcs8 = RsaKeyPair::generate(KeySize::Rsa2048)
-            .unwrap()
-            .as_der()
-            .unwrap();
-        // `from_rsa_der` wants PKCS#1; the PEM path also takes PKCS#8.
-        let b64 = base64::engine::general_purpose::STANDARD.encode(pkcs8.as_ref());
-        let pem = format!("-----BEGIN PRIVATE KEY-----\n{b64}\n-----END PRIVATE KEY-----\n");
+        let pkcs8 = include_bytes!("../../tests/keys/rsa2048.pk8");
+        let key = EncodingKey::from_rsa_pem(pkcs8).unwrap();
         Key {
             kid: "rsa",
             alg: Algorithm::RS512,
-            encoding: EncodingKey::from_rsa_pem(pem.as_bytes()).unwrap(),
+            encoding: key,
         }
     });
 
     static EC: LazyLock<Key> = LazyLock::new(|| ec_key("ec"));
 
     fn ec_key(kid: &'static str) -> Key {
-        let pkcs8 = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_FIXED_SIGNING)
-            .unwrap()
-            .to_pkcs8v1()
-            .unwrap();
+        let secret = p256::SecretKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
         Key {
             kid,
             alg: Algorithm::ES256,
-            encoding: EncodingKey::from_ec_der(pkcs8.as_ref()),
+            encoding: EncodingKey::from_ec_der(secret.to_pkcs8_der().unwrap().as_bytes()),
         }
     }
 

@@ -7,10 +7,10 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock};
 
-use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};
 use criterion::{Criterion, criterion_group, criterion_main};
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use p256::pkcs8::EncodePrivateKey;
 use opensovd_extra::{JwtAuthenticator, RegorusAuthorizer};
 use opensovd_server::{Access, Authenticator, Authorizer, Principal};
 
@@ -18,10 +18,8 @@ const BENCH_ISSUER: &str = "OpenSOVD";
 const KID: &str = "bench";
 
 static SIGNING_KEY: LazyLock<EncodingKey> = LazyLock::new(|| {
-    let pkcs8 = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_FIXED_SIGNING)
-        .and_then(|key| key.to_pkcs8v1())
-        .expect("Failed to generate key");
-    EncodingKey::from_ec_der(pkcs8.as_ref())
+    let secret = p256::SecretKey::random(&mut p256::elliptic_curve::rand_core::OsRng);
+    EncodingKey::from_ec_der(secret.to_pkcs8_der().expect("Failed to encode key").as_bytes())
 });
 
 const REGO_POLICY_PATH: &str = concat!(

@@ -3,6 +3,9 @@
 
 //! rustls configs from PEM files.
 
+#[cfg(not(any(feature = "crypto-ring", feature = "crypto-aws-lc")))]
+compile_error!("enable a crypto backend: crypto-ring or crypto-aws-lc");
+
 mod server;
 
 use std::path::{Path, PathBuf};
@@ -92,7 +95,16 @@ pub fn load_roots(paths: &[PathBuf]) -> Result<RootCertStore, TlsError> {
 fn provider_or_default(provider: Option<Arc<CryptoProvider>>) -> Arc<CryptoProvider> {
     provider
         .or_else(|| CryptoProvider::get_default().cloned())
-        .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .unwrap_or_else(|| {
+            #[cfg(feature = "crypto-aws-lc")]
+            {
+                Arc::new(rustls::crypto::aws_lc_rs::default_provider())
+            }
+            #[cfg(all(not(feature = "crypto-aws-lc"), feature = "crypto-ring"))]
+            {
+                Arc::new(rustls::crypto::ring::default_provider())
+            }
+        })
 }
 
 #[cfg(test)]
@@ -199,7 +211,7 @@ mod tests {
 
     #[test]
     fn provider_explicit_wins() {
-        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let provider = provider_or_default(None);
         let chosen = provider_or_default(Some(Arc::clone(&provider)));
         assert!(Arc::ptr_eq(&chosen, &provider));
     }

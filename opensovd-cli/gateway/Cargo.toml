@@ -17,11 +17,13 @@ name = "opensovd-gateway"
 path = "src/main.rs"
 
 [features]
-default = ["jsonschema", "json-preserve-order", "mock", "tls", "mdns"]
+default = ["jsonschema", "json-preserve-order", "mock", "tls", "mdns", "crypto-aws-lc"]
 jsonschema = ["opensovd-server/jsonschema", "dep:schemars"]
 json-preserve-order = ["opensovd-server/json-preserve-order"]
 mock = ["dep:opensovd-mocks"]
 tls = ["opensovd-server/tls", "opensovd-extra/tls"]
+crypto-ring = ["opensovd-extra/crypto-ring"]
+crypto-aws-lc = ["opensovd-extra/crypto-aws-lc"]
 mdns = ["opensovd-extra/mdns", "dep:socket2"]
 
 [dependencies]
@@ -29,7 +31,7 @@ anyhow = { workspace = true }
 libcli = { workspace = true }
 opensovd-server = { workspace = true }
 opensovd-core = { workspace = true }
-opensovd-extra = { workspace = true, features = ["auth", "trace"] }
+opensovd-extra = { workspace = true, default-features = false, features = ["auth", "trace"] }
 opensovd-mocks = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

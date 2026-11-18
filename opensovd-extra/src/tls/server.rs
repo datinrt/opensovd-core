@@ -60,7 +60,7 @@ impl ServerTlsConfig {
         self
     }
 
-    /// Defaults to the installed rustls provider, else aws-lc-rs.
+    /// Defaults to the installed rustls provider, else AWS-LC.
     pub fn provider(mut self, provider: Arc<CryptoProvider>) -> Self {
         self.provider = Some(provider);
         self
@@ -142,7 +142,7 @@ mod tests {
         let server = server();
         let cert = pem_file(&server.cert);
         let key = pem_file(&server.key);
-        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let provider = provider_or_default(None);
         let config = ServerTlsConfig::new(cert.path(), key.path())
             .provider(Arc::clone(&provider))
             .build()
